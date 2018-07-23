@@ -1,0 +1,149 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Lambda and API Gateway",
+  "Parameters": {
+    "S3Bucket": {
+      "Description": "The name of the S3 bucket that contains the source code of your Lambda function.",
+      "Type": "String",
+	  "Default" : "varun-pe-script-bucket"    
+	  },
+    "S3Key": {
+      "Description": "The location and name of your source code .zip file.",
+      "Type": "String",
+      "Default": "lambda.zip"
+    }
+  },
+  "Resources": {
+    "MoviesTable": {
+      "Type": "AWS::DynamoDB::Table",
+      "Properties": {
+        "AttributeDefinitions": [{
+          "AttributeName": "id",
+          "AttributeType": "S"
+        }],
+        "KeySchema": [{
+          "AttributeName": "id",
+          "KeyType": "HASH"
+        }],
+        "ProvisionedThroughput": {
+          "ReadCapacityUnits": 1,
+          "WriteCapacityUnits": 1
+        },
+        "TableName": "varun-pe-cft"
+      }
+    },
+    "Lambda": {
+      "Type": "AWS::Lambda::Function",
+      "Properties": {
+        "Code": {
+          "S3Bucket": {"Ref": "S3Bucket"},
+          "S3Key": {"Ref": "S3Key"}
+        },
+        "Description": "Lambda Function using cloud formation template",
+        "Handler": "index.writeMovie",
+        "MemorySize": 128,
+        "Role": "arn:aws:iam::488599217855:role/Q11_DynamoDB_FullAccess",
+        "Runtime": "nodejs6.10",
+        "Timeout": 3
+      }
+    },
+    "LambdaPermission": {
+      "Type": "AWS::Lambda::Permission",
+      "Properties": {
+        "Action": "lambda:invokeFunction",
+        "FunctionName": {"Fn::GetAtt": ["Lambda", "Arn"]},
+        "Principal": "apigateway.amazonaws.com",
+        "SourceArn": {"Fn::Join": ["", ["arn:aws:execute-api:", {"Ref": "AWS::Region"}, ":", {"Ref": "AWS::AccountId"}, ":", {"Ref": "RestApi"}, "/*"]]}
+      }
+    },
+    "RestApi": {
+      "Type": "AWS::ApiGateway::RestApi",
+      "Properties": {
+        "Name": "varun-pe-cft"
+      }
+    },
+    "InsertItemModel": {
+      "Type": "AWS::ApiGateway::Model",
+      "Properties": {
+        "ContentType": "application/json",
+        "Name": "insertItem",
+        "RestApiId": {"Ref": "RestApi"},
+        "Schema": {
+          "$schema": "http://json-schema.org/draft-04/schema#",
+          "title": "insertItem",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "language": {
+              "type": "string"
+            }
+          },
+          "required": ["name", "language"]
+        }
+      }
+    },
+    "putItemResource": {
+      "Type": "AWS::ApiGateway::Resource",
+      "Properties": {
+        "RestApiId": {"Ref": "RestApi"},
+        "ParentId": {"Fn::GetAtt": ["RestApi", "RootResourceId"]},
+        "PathPart": "put-item"
+      }
+    },
+    "restApiPost": {
+      "Type": "AWS::ApiGateway::Method",
+      "Properties": {
+        "RestApiId": {"Ref": "RestApi"},
+        "ResourceId": {"Ref": "putItemResource"},
+        "HttpMethod": "POST",
+        "AuthorizationType": "NONE",
+        "Integration": {
+          "Type": "AWS",
+          "IntegrationHttpMethod": "POST",
+          "Uri": {"Fn::Join" : ["", ["arn:aws:apigateway:", {"Ref": "AWS::Region"}, ":lambda:path/2015-03-31/functions/", {"Fn::GetAtt": ["Lambda", "Arn"]}, "/invocations"]]},
+          "IntegrationResponses": [{
+            "ResponseTemplates": {
+              "application/json": "{}"
+            },
+            "ResponseParameters": {
+              "method.response.header.Location": "integration.response.body.headers.uid"
+            },
+            "StatusCode": 201
+          }],
+          "PassthroughBehavior": "NEVER",
+          "RequestTemplates": {
+            "application/json": "{\"fun\": \"postUser\", \"body\": $input.json('$')}"
+          }
+        },
+        "RequestModels": {
+          "application/json": {"Ref": "InsertItemModel"}
+        },
+        "MethodResponses": [{
+          "ResponseModels": {
+            "application/json": "Empty"
+          },
+          "ResponseParameters": {
+            "method.response.header.Location": true
+          },
+          "StatusCode": 201
+        }]
+      }
+    },
+    "RestApiDeployment": {
+      "Type": "AWS::ApiGateway::Deployment",
+      "Properties": {
+        "RestApiId": {"Ref": "RestApi"},
+        "StageName": "v1"
+      },
+      "DependsOn": ["restApiPost"]
+    }
+  },
+  "Outputs": {
+    "ApiId": {
+      "Value": {"Ref": "RestApi"}
+	}
+  }
+}
