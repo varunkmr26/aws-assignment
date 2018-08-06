@@ -4,7 +4,7 @@
 aws lambda create-function --function-name varun-pe-shell-function \
 --runtime python3.6 --role arn:aws:iam::488599217855:role/varun_pe_assignment1 \
 --handler lambda_function.lambda_handler \
---code S3Bucket="varun-pe-bucket",S3Key="function.zip" \
+--code S3Bucket="varun-pe-bucket",S3Key="resize_function.zip" \
 --memory-size 512 \
 --timeout 300 \
 --region us-east-1
